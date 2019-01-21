@@ -4,9 +4,16 @@
 #include <ioexpander.h>
 #include <SPI.h>
 #include "Wire.h"
+#include <Adafruit_NeoPixel.h>
 
 IOExpander ioExpander;
 TaskHandle_t ledBlinkHandle = NULL;
+
+#define PIN 17
+#define NUM_LEDS 8
+#define BRIGHTNESS 50
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, PIN, NEO_GRB + NEO_KHZ800);
 
 void ledBlink(void *pvParameters)
 {
@@ -50,17 +57,43 @@ void setup() {
   ioExpander.pinMode(EXT_PIN01_LED, OUTPUT);
   ioExpander.digitalWrite(EXT_PIN01_LED, HIGH);
 
+  //BATT READ ENABLE
+  ioExpander.pinMode(EXT_PIN13_BATT_READ_EN, OUTPUT);
+  ioExpander.digitalWrite(EXT_PIN13_BATT_READ_EN, HIGH);
+
+  //Enable External Power, Low State to pilot the transistor
+  ioExpander.pinMode(EXT_PIN14_EXTERNAL_POWER_EN, OUTPUT);
+  ioExpander.digitalWrite(EXT_PIN14_EXTERNAL_POWER_EN,LOW);
+
   // put your setup code here, to run once:
   Serial.begin(115200);
   Serial.println("Initialized...");
 
   //On Arduino Core, blink led
   xTaskCreatePinnedToCore(&ledBlink, "Blinky", 2048, NULL, 1, &ledBlinkHandle,1);
+  
+  strip.setBrightness(BRIGHTNESS);
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
+}
 
+int r = 255;
+int g = 0;
+int b = 0;
+
+
+// Fill the dots one after the other with a color
+void colorWipe(uint32_t c, uint8_t wait) {
+  for(uint16_t i=0; i<strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+  }
+  strip.show();
+  delay(wait);
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   Serial.println("sleeping..");
   delay(1000);
+  colorWipe(strip.Color( r,  g, b), 0); // Red
 }
