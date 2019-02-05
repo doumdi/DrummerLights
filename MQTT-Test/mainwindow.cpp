@@ -6,14 +6,16 @@
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
-    ui(new Ui::MainWindow)
+    ui(new Ui::MainWindow),
+    m_mqttClient(nullptr),
+    m_serialPort(nullptr)
 {
     ui->setupUi(this);
-
 
     connect(ui->colorButton,&QPushButton::clicked, this, &MainWindow::colorButtonClicked);
 
     //Setup MQTT Client
+#if 0
     m_mqttClient = new QMqttClient(this);
     m_mqttClient->setClientId("qtgui");
     m_mqttClient->setHostname("localhost");
@@ -21,10 +23,31 @@ MainWindow::MainWindow(QWidget *parent) :
 
     connect(m_mqttClient, &QMqttClient::connected, this, &MainWindow::clientConnected);
     connect(m_mqttClient, &QMqttClient::messageReceived, this, &MainWindow::messageReceived);
+
+    m_mqttClient->connectToHost();
+
+ #endif
+
+
+    m_serialPort = new QSerialPort(this);
+    m_serialPort->setParity(QSerialPort::Parity::NoParity);
+    m_serialPort->setBaudRate(QSerialPort::Baud38400);
+    m_serialPort->setStopBits(QSerialPort::StopBits::OneStop);
+    m_serialPort->setDataBits(QSerialPort::DataBits::Data8);
+    m_serialPort->setPortName("/dev/cu.usbmodem14201");
+
+    //Signals
+    connect(m_serialPort, &QSerialPort::readyRead, this, &MainWindow::readyReadSerialPort);
+
+    if (m_serialPort->open(QIODevice::ReadWrite))
+        ui->textEdit->append("Serial port opened.");
+
+    QThread::sleep(3);
+
     connect(ui->redVerticalSlider, &QSlider::valueChanged, this, &MainWindow::colorValueChanged);
     connect(ui->greenVerticalSlider, &QSlider::valueChanged, this, &MainWindow::colorValueChanged);
     connect(ui->blueVerticalSlider, &QSlider::valueChanged, this, &MainWindow::colorValueChanged);
-    m_mqttClient->connectToHost();
+
     m_timer = new QTimer(this);
     connect(m_timer,&QTimer::timeout, this, &MainWindow::timeout);
     m_timer->start(100);
@@ -43,24 +66,27 @@ void MainWindow::clientConnected()
 
 void MainWindow::timeout()
 {
-    if (m_mqttClient->state() == QMqttClient::Connected)
+
+    int red = ui->redVerticalSlider->value();
+    int green = ui->greenVerticalSlider->value();
+    int blue = ui->blueVerticalSlider->value();
+
+    QString data;
+    QTextStream myStream(&data);
+    myStream << red <<" " << green <<" " << blue << "\n";
+
+    if (m_mqttClient != nullptr && m_mqttClient->state() == QMqttClient::Connected)
     {
-
-        int red = ui->redVerticalSlider->value();
-        int green = ui->greenVerticalSlider->value();
-        int blue = ui->blueVerticalSlider->value();
-
-        QString data;
-        QTextStream myStream(&data);
-
-
-        myStream << red <<" " << green <<" " << blue << "\n";
-
-        ui->textEdit->append(QString("Writing ") + data);
+        ui->textEdit->append(QString("Writing MQTT") + data);
         QMqttTopicName topic("/arduino/rgb");
         m_mqttClient->publish(topic, data.toUtf8());
-
     }
+
+    if (m_serialPort)
+    {
+        m_serialPort->write(data.toUtf8());
+    }
+
 
 }
 
@@ -98,4 +124,10 @@ void MainWindow::colorValueChanged(int)
     palette.setColor(ui->colorLabel->foregroundRole(), color);
     ui->colorLabel->setPalette(palette);
     ui->colorLabel->setAutoFillBackground(true);
+}
+
+void MainWindow::readyReadSerialPort()
+{
+    if (m_serialPort)
+        ui->textEdit->append(QString("[SERIAL]") + m_serialPort->readAll());
 }
